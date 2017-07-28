@@ -2,7 +2,7 @@ import gym
 import torch
 import random
 from torch.autograd import Variable
-
+from torch import FloatTensor
 # Initialize replay memory D
 D = []
 
@@ -16,11 +16,15 @@ model = torch.nn.Sequential(
     torch.nn.Sigmoid()
 )
 
+# Definition of MSE loss function
+loss_function = torch.nn.MSELoss()
+
 # Parameters 
 max_episodes = 10
 max_iterations = 100
 epsilon = 0.7
 batch_size = 128
+gamma = 0.7
 T = 0
 
 # Initialize the environment
@@ -32,13 +36,35 @@ def pick_action(state):
     if random.random() > epsilon:
         return 0 if random.random() < 0.5 else 1
     else:
-        return model(Variable(state))
+        # Given the state, make the DQN decide the "best action"
+        return model(Variable(FloatTensor(state), volatile=True))
 
 def optimize_model():
     # Sample transitions in memory replay D
     batch = random.sample(D, batch_size)
-    # TODO: Calculate Model Loss from batch states  
-
+    # Get transitions from batch
+    state_batch = []
+    action_batch = []
+    reward_batch = []
+    next_state_batch = []
+    for state, action, reward, next_state in batch:
+        state_batch.append(state)
+        action_batch.append(action)
+        reward_batch.append(reward)
+        next_state_batch.append(next_state)
+    # Compute Q(s_t, a) from current state
+    q_values = model(Variable(FloatTensor(state_batch)))
+    print q_values
+    # TODO: Get best actions for the state_batch
+    #
+    # Compute V(s_{t+1}) for next_state batch
+    next_state_values = model(Variable(FloatTensor(next_state_batch)))
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * gamma) + Variable(FloatTensor(reward_batch))
+    print expected_state_action_values
+    # Compute loss function
+    loss = loss_function(q_values, expected_state_action_values)
+    # TODO: Optimize the parameters
 
 for episode in xrange(max_episodes):
     env.render()
