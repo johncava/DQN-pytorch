@@ -1,8 +1,11 @@
 import gym
 import torch
 import random
+import numpy as np
+import torch.optim as optim
 from torch.autograd import Variable
 from torch import FloatTensor
+
 # Initialize replay memory D
 D = []
 
@@ -16,14 +19,18 @@ model = torch.nn.Sequential(
     torch.nn.Sigmoid()
 )
 
+
 # Definition of MSE loss function
 loss_function = torch.nn.MSELoss()
 
+# Definition of the RMSprop optimizer function
+optimizer = optim.RMSprop(model.parameters())
+
 # Parameters 
 max_episodes = 10
-max_iterations = 100
+max_iterations = 5000
 epsilon = 0.7
-batch_size = 128
+batch_size = 1
 gamma = 0.7
 T = 0
 
@@ -37,7 +44,11 @@ def pick_action(state):
         return 0 if random.random() < 0.5 else 1
     else:
         # Given the state, make the DQN decide the "best action"
-        return model(Variable(FloatTensor(state), volatile=True))
+        prediction = model(Variable(FloatTensor([state])))
+        prediction = prediction.data.numpy()
+        #print prediction
+        #print np.argmax(prediction, axis=1)
+        return np.argmax(prediction, axis=1)[0]
 
 def optimize_model():
     # Sample transitions in memory replay D
@@ -54,19 +65,39 @@ def optimize_model():
         next_state_batch.append(next_state)
     # Compute Q(s_t, a) from current state
     q_values = model(Variable(FloatTensor(state_batch)))
+    print Variable(torch.LongTensor([action_batch]))
+    q_values = q_values.gather(1, Variable(torch.LongTensor([action_batch])))
+    print 'q_values ', q_values
+    '''
+    # Equivalent to "q_values.gather(1, Variable(torch.LongTensor([action_batch])))"
+    q_values = q_values.data.numpy()
+    q_values_from_action = []
     print q_values
-    # TODO: Get best actions for the state_batch
-    #
-    # Compute V(s_{t+1}) for next_state batch
-    next_state_values = model(Variable(FloatTensor(next_state_batch)))
+    print action_batch
+    for index in xrange(len(batch)):
+        q_values_from_action.append(q_values[index][action_batch[index]])
+    print q_values_from_action
+    '''
+    # Compute V(s_{t+1}) for next_state_batch
+    next_state_values = model(Variable(FloatTensor(next_state_batch), volatile=True)).max(1)[0]
     # Compute the expected Q values
+    print 'next_state_values: ', next_state_values
+    print reward_batch
+    next_state_values.volatile = False
     expected_state_action_values = (next_state_values * gamma) + Variable(FloatTensor(reward_batch))
-    print expected_state_action_values
+    print 'Expected state action values: ' ,expected_state_action_values
     # Compute loss function
     loss = loss_function(q_values, expected_state_action_values)
-    # TODO: Optimize the parameters
+    # Zero the gradients for the optimizer
+    optimizer.zero_grad()
+    # Backpropagate the error through the DQN model
+    loss.backward()
+
+    optimizer.step()
 
 for episode in xrange(max_episodes):
+    #env.render()
+    env.reset()
     env.render()
     # Initial observation
     state, reward, done, _ = env.step(0)
